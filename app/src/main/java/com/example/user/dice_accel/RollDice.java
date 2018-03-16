@@ -13,12 +13,13 @@
  *  You should have received a copy of the GNU General Public License
  *  along with Simple Dice.  If not, see <http://www.gnu.org/licenses/>.
  */
-package com.dylanmtaylor.simpledice;
+package com.example.user.dice_accel;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Random;
-import com.dylanmtaylor.simpledice_free.R;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
 import android.hardware.Sensor;
@@ -29,12 +30,20 @@ import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.speech.tts.TextToSpeech;
+import android.support.v7.app.AppCompatActivity;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
-public class RollDice extends Activity implements SensorEventListener {
+import com.jjoe64.graphview.series.DataPoint;
+
+public class RollDice extends AppCompatActivity implements SensorEventListener {
 	private final int rollAnimations = 50;
 	private final int delayTime = 15;
 	private Resources res;
@@ -47,7 +56,7 @@ public class RollDice extends Activity implements SensorEventListener {
 	private ImageView die1;
 	private ImageView die2;
 	private LinearLayout diceContainer;
-        private SensorManager sensorMgr; 
+	private SensorManager sensorMgr;
 	private Handler animationHandler;
 	private long lastUpdate = -1;
 	private float x, y, z;
@@ -55,6 +64,9 @@ public class RollDice extends Activity implements SensorEventListener {
 	private boolean paused = false;
 	private static final int UPDATE_DELAY = 50;
 	private static final int SHAKE_THRESHOLD = 800;
+    private graphic graph=new graphic();
+	private RandomPredictor prediction;
+    private TextToSpeech t1;
 
 	/** Called when the activity is first created. */
 	@Override
@@ -62,7 +74,7 @@ public class RollDice extends Activity implements SensorEventListener {
 		paused = false;
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.game);
-		setTitle(getString(R.string.app_title));
+		setTitle("Simple Dice");
 		res = getResources();
 		for (int i = 0; i < 6; i++) {
 			dice[i] = res.getDrawable(diceImages[i]);
@@ -84,13 +96,48 @@ public class RollDice extends Activity implements SensorEventListener {
 				die2.setImageDrawable(dice[roll[1]]);
 			}
 		};
-		sensorMgr = (SensorManager) getSystemService(SENSOR_SERVICE);
+		prediction=new RandomPredictor();
+        t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != TextToSpeech.ERROR) {
+                    t1.setLanguage(Locale.US);
+                }
+            }
+        });
+        sensorMgr = (SensorManager) getSystemService(SENSOR_SERVICE);
 		boolean accelSupported = sensorMgr.registerListener(this,
 				sensorMgr.getDefaultSensor(SensorManager.SENSOR_ACCELEROMETER),	SensorManager.SENSOR_DELAY_GAME);
 		if (!accelSupported) sensorMgr.unregisterListener(this); //no accelerometer on the device
 		rollDice();
 	}
 
+	public boolean onCreateOptionsMenu(Menu menu) {
+
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.menu, menu);
+		return true;
+	}
+	public void makePrediction(){
+        String output=new String((Math.abs(prediction.getPrediction())%6+1)+" "+(Math.abs(prediction.getPrediction())%6+1));
+        t1.speak("The outcome prediction is "+output, TextToSpeech.QUEUE_FLUSH, null);
+        Toast.makeText(getApplicationContext(),output.toString(),Toast.LENGTH_LONG).show();
+    }
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.about:
+                startActivity(new Intent(getApplicationContext(), graph.getClass()));
+                return true;
+            case R.id.predict:
+                makePrediction();
+                return true;
+			case R.id.aboutme:
+				Toast.makeText(getApplicationContext(), "Created by dylanmtaylor \n Modified by \n - Bryan Christofel \n - Sudono Tanjung", Toast.LENGTH_SHORT).show();
+				return true;
+			default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
 	private void rollDice() {
 		if (paused) return;
 		new Thread(new Runnable() {
@@ -110,6 +157,8 @@ public class RollDice extends Activity implements SensorEventListener {
 			e.printStackTrace();
 		}
 		mp.start();
+        DiceData.addData(1,roll[0]+1);
+        DiceData.addData(2,roll[1]+1);
 	}
 
 	private void doRoll() { // only does a single roll
